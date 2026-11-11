@@ -147,15 +147,26 @@
       ],
       "date": "Released: 11/11/2026"
     },
-    "App-utilities": {
+    "App-Utilities": {
       "desc": "Text, math, color, date and validation utilities.",
       "creator": "VSblocks",
-      "url": "App-utilities.js",
-      "banner": "App-utilities.svg",
+      "url": "app-utilities.js",
+      "banner": "App-Utilities.svg",
       "tags": [
         "Utility",
         "Math",
         "Time"
+      ],
+      "date": "Released: 11/11/2026"
+    },
+    "App-9-patch": {
+      "desc": "Nine-slice scaling for the selected costume with real-time resizing.",
+      "creator": "VSblocks",
+      "url": "app-nonepatch.js",
+      "banner": "App-9-patch.svg",
+      "tags": [
+        "Utility",
+        "Graphics"
       ],
       "date": "Released: 11/11/2026"
     }
