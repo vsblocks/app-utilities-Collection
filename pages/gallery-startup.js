@@ -1,7 +1,7 @@
 /* Public Variables */
 let isPenguinMod = false;
 let allTags, currentTags = ["all"];
-let downloadType = "download";
+let downloadType = "clipboard";
 let compress = false, eraseDeprecation = false;
 let galleryData = {}, pins = [];
 let _cachedExtTags = undefined;
@@ -42,12 +42,8 @@ function updateStorage() {
 
 /* Function to make GUI Interactible */
 function initGUI() {
-  /* Donate Button */
-  const donateBtn = document.querySelector(`button[class="donateBtn"]`);
-  donateBtn.addEventListener("click", (e) => {
-    window.open("https://sharkpool-sp.github.io/donations/", "_blank");
-    e.stopImmediatePropagation();
-  });
+
+  
 
   /* Settings Button */
   const settingsBtn = document.querySelector(`img[class="navImg"][id="settings"]`);
@@ -80,13 +76,6 @@ function initGUI() {
       document.querySelector(`div[class="tagBar"] ext-tag[id="All"]`).click();
       e.stopImmediatePropagation();
     }
-  });
-
-  /* GitHub Button */
-  const gitRepoBtn = document.querySelector(`img[class="navImgBig"][id="gitRepo"]`);
-  gitRepoBtn.addEventListener("click", (e) => {
-    window.open("https://github.com/SharkPool-SP/SharkPools-Extensions");
-    e.stopImmediatePropagation();
   });
 
   /* Tag Bar */

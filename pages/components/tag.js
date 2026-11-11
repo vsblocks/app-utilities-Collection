@@ -59,8 +59,8 @@ class Tag extends HTMLElement {
           transform: rotate(180deg);
         }
         ext-tag[selected] div {
-          background-color: #0051ff !important;
-          border-color: #001fff !important;
+          background-color: #680BC0 !important;
+          border-color: #320084 !important;
         }
 
         .ext-tag {
@@ -75,8 +75,8 @@ class Tag extends HTMLElement {
           padding: 2px 10px 2px;
           font-weight: 600;
           font-size: 1.2em;
-          background-color: #00b8ff;
-          border: solid 5px #007dff;
+          background-color: #A94DFF;
+          border: solid 5px #731DC4;
           border-radius: 50px;
         }
         .ext-tag:hover {

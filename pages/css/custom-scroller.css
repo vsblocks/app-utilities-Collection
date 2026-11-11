@@ -1,6 +1,6 @@
 :root {
-    --track-color: #171717;
-    --thumb-color: #34befa;
+    --track-color: #17171700;
+    --thumb-color: #9434fa;
     --scrollbar-width: 22px;
     --scrollbar-radius: 50px;
     --scrollbar-width-moz: auto;
@@ -16,15 +16,9 @@ body::-webkit-scrollbar-track {
 }
 body::-webkit-scrollbar-thumb {
   border-radius: var(--scrollbar-radius);
-  border: 3px solid #c7feff;
+  border: 3.5px solid var(--thumb-color);
   background-clip: padding-box;
-  background: repeating-linear-gradient(
-    to bottom,
-    #175773,
-    #175773 16px,
-    #c7feff 16px,
-    #c7feff 19px
-  );
+  background: rgb(57, 2, 84);
 }
 
 /* Firefox */

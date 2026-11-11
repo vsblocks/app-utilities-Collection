@@ -85,6 +85,18 @@ async function downloadExt(name, url) {
     return;
   }
 
+  if (downloadType === "clipboard") {
+    // Copies the extension's link (absolute URL) instead of its code
+    const link = new URL(url, window.location.href).href;
+    try {
+      await navigator.clipboard.writeText(link);
+      genText("center-notif", "Link Copied to Clipboard!");
+    } catch (e) {
+      window.open(url);
+    }
+    return;
+  }
+
   let extCode = await (await fetch(url)).text();
   if (eraseDeprecation) {
     const regex = new RegExp(`\\s*/\\* Deprecation Marker \\*/[\\s\\S]*?/\\* Marker End \\*/`, "g");
@@ -100,18 +112,12 @@ async function downloadExt(name, url) {
     }
   }
 
-  if (downloadType === "clipboard") {
-    navigator.clipboard.writeText(extCode)
-      .then(() => genText("center-notif", "Copied to Clipboard!"))
-      .catch(() => window.open(url));
-  } else {
-    const blobUrl = URL.createObjectURL(new Blob([extCode]));
-    const a = document.createElement("a");
-    a.href = blobUrl;
-    a.download = name + ".js";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(blobUrl);
-  }
+  const blobUrl = URL.createObjectURL(new Blob([extCode]));
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = name + ".js";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(blobUrl);
 }

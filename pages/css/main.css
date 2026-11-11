@@ -22,7 +22,7 @@ body {
   display: flex;
   flex-direction: column;
   font-size: 30px;
-  color: #b7e9ff;
+  color: #dbb7ff;
 }
 .navBar .title {
   font-family: "Lilita One", Sans-Serif;
@@ -31,7 +31,7 @@ body {
 .navBar .header {
   font-size: 15px;
   font-weight: 600;
-  color: #b7e9ff;
+  color: #dbb7ff;
   max-width: 500px;
 }
 .navBar img {
@@ -70,8 +70,8 @@ body {
   height: 35px;
   padding: 8px;
   margin: 5px;
-  background-color: #00b8ff;
-  border: solid 5px #007dff;
+  background-color: #A94DFF;
+  border: solid 5px #731DC4;
   border-radius: 50px;
   cursor: pointer;
   transition: transform 200ms ease-in-out;
@@ -176,9 +176,9 @@ body {
   align-items: center;
   padding: 10px;
   margin: 5px;
-  background: linear-gradient(110deg, #00b8ff 40%, #66d9ff 50%, #00b8ff 60%);
+  background: linear-gradient(110deg, #A94DFF 40%, #66d9ff 50%, #A94DFF 60%);
   background-size: 200% 100%;
-  border: solid 6px #007dff;
+  border: solid 6px #731DC4;
   border-radius: 50px;
   line-height: 150%;
   text-indent: 10px;

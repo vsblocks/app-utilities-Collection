@@ -6,13 +6,13 @@ const settingsContainer = () => {
           <input type="checkbox" ${downloadType === "download" ? "checked" : ""}><pre>Download Extensions to My Device</pre>
         </div>
         <div id="clipboard">
-          <input type="checkbox" ${downloadType === "clipboard" ? "checked" : ""}><pre>Copy Extensions to Clipboard</pre>
+          <input type="checkbox" ${downloadType === "clipboard" ? "checked" : ""}><pre>Copy Extension Links to Clipboard</pre>
         </div>
         <div id="url">
           <input type="checkbox" ${downloadType === "url" ? "checked" : ""}><pre>Open Extensions in new Tabs</pre>
         </div>
       </div>
-      <div class="setting-div">
+      <div style="display: none !important;" class="setting-div">
         <div id="deprecated">
           <input type="checkbox" ${eraseDeprecation ? "checked" : ""}><pre>Remove Deprecated Code</pre>
         </div>
@@ -20,7 +20,7 @@ const settingsContainer = () => {
           Removes unused extension code. Lowers the file size but breaks compatibility with older versions
         </div>
       </div>
-      <div class="setting-div">
+      <div style="display: none !important;" class="setting-div">
         <div id="compress">
           <input type="checkbox" ${compress ? "checked" : ""}><pre>Compress Code</pre>
         </div>
@@ -68,10 +68,10 @@ class SettingsModal extends HTMLElement {
           transform: translate(-50%, -50%) scale(${Math.min(1.2, Math.max(0.5, window.screen.width / window.screen.height))});
           left: 50%;
           top: 50%;
-          background: repeating-linear-gradient(to bottom, #0c152b 0%, #0c152b 4%, #00314b 4%, #00314b 5%, #0c152b 5%);
+          background-color: black;
           padding: 15px 20px 20px 20px;
           border-radius: 25px;
-          border: outset 10px #0073ff;
+          border: outset 10px #731DC4;
           box-shadow: 0 0 0 7px #fff;
           user-select: text;
         }
@@ -98,8 +98,8 @@ class SettingsModal extends HTMLElement {
           -webkit-text-stroke: .5px #fff;
           letter-spacing: 1px;
           font-size: 1.5em;
-          background: linear-gradient(#00b8ff, #007dff);
-          border: solid 4.5px #0035ff;
+          background: linear-gradient(#A94DFF, #731DC4);
+          border: solid 4.5px #9900FF;
           border-radius: 18px;
           box-shadow: 0 0 0 2px;
           margin-top: 5px;
@@ -147,7 +147,7 @@ class SettingsModal extends HTMLElement {
           margin: 15px;
           border: solid 3px #fff;
           border-radius: 50px;
-          background: linear-gradient(#00a5ff, #0073ff);
+          background: linear-gradient(#9000FF, #731DC4);
           transform: scale(1.1);
         }
         .search-inner {

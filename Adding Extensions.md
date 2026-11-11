@@ -1,4 +1,4 @@
-**Adding Your Extension to SharkPool's Extension Collection**
+**Adding Your Extension to App-utilities Extension Collection**
 ---
 
 ### Step 1: Extension Format
