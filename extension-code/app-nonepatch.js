@@ -21,8 +21,8 @@
   const MAX_PX = 4096;
   const MAX_TILES = 20000;
 
-  if (Scratch.gui) {
-    Scratch.gui.getBlockly().then((ScratchBlocks) => {
+  if (Scratch.gui && typeof Scratch.gui.getBlockly === 'function') {
+    Promise.resolve(Scratch.gui.getBlockly()).then((ScratchBlocks) => {
       try {
         const G = ScratchBlocks.BlockSvg.GRID_UNIT;
         ScratchBlocks.BlockSvg.registerCustomShape(SHAPE_ID, {
@@ -50,7 +50,7 @@
       } catch (e) {
         console.warn('[9-Patch] could not register block shape:', e);
       }
-    });
+    }).catch((e) => console.warn('[9-Patch] block shape unavailable:', e));
   }
 
   const num = (v, d) => {
@@ -201,13 +201,177 @@
     return { canvas, origW: w, origH: h, resX: 1, resY: 1 };
   }
 
-  async function loadCostumeImage(costume) {
-    const asset = costume.asset;
-    if (!asset || !asset.data) throw new Error('Costume has no image data.');
-    const fmt = String(costume.dataFormat || asset.dataFormat || 'png').toLowerCase();
-    if (fmt === 'svg') return loadSvg(asset.data);
-    return loadBitmap(asset.data, MIME[fmt] || 'image/png', costume.bitmapResolution || 1);
+  function assetDataOf(costume) {
+    return costume.asset && costume.asset.data ? costume.asset.data : null;
   }
+
+  function skinOf(costume) {
+    const r = runtime.renderer;
+    return r && r._allSkins ? r._allSkins[costume.skinId] : null;
+  }
+
+  function skinSvgText(skin) {
+    if (!skin) return null;
+    const sr = skin._svgRenderer;
+    if (sr) {
+      if (typeof sr.toString === 'function') {
+        const s = sr.toString(true);
+        if (typeof s === 'string' && s.indexOf('<svg') !== -1) return s;
+      }
+      if (sr._svgTag) return new XMLSerializer().serializeToString(sr._svgTag);
+    }
+    const img = skin._svgImage;
+    const src = img && img.src;
+    if (typeof src === 'string' && src.startsWith('data:image/svg+xml')) {
+      const comma = src.indexOf(',');
+      const head = src.slice(0, comma);
+      const body = src.slice(comma + 1);
+      try {
+        if (/;base64/i.test(head)) {
+          const bin = atob(body);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          return new TextDecoder('utf-8').decode(bytes);
+        }
+        return decodeURIComponent(body);
+      } catch (e) {
+        console.warn('[9-Patch] could not decode skin svg:', e);
+      }
+    }
+    return null;
+  }
+
+  function skinBitmapSource(skin, costume) {
+    const r = runtime.renderer;
+    const gl = r && r.gl;
+    if (!gl || !skin || typeof skin.getTexture !== 'function') throw new Error('No GL texture for costume.');
+    const tex = skin.getTexture([100, 100]);
+    if (!tex) throw new Error('Costume skin has no texture.');
+    const res = costume.bitmapResolution > 0 ? costume.bitmapResolution : 1;
+    const ts = skin._textureSize;
+    const w = Math.round(ts ? ts[0] : skin.size[0] * res);
+    const h = Math.round(ts ? ts[1] : skin.size[1] * res);
+    if (!(w > 0 && h > 0)) throw new Error('Bad skin size.');
+    const prevFb = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+    const fb = gl.createFramebuffer();
+    const px = new Uint8Array(w * h * 4);
+    try {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, prevFb);
+      gl.deleteFramebuffer(fb);
+    }
+    for (let i = 0; i < px.length; i += 4) {
+      const al = px[i + 3];
+      if (al > 0 && al < 255) {
+        px[i] = Math.min(255, Math.round((px[i] * 255) / al));
+        px[i + 1] = Math.min(255, Math.round((px[i + 1] * 255) / al));
+        px[i + 2] = Math.min(255, Math.round((px[i + 2] * 255) / al));
+      }
+    }
+    const canvas = makeCanvas(w, h);
+    canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer), w, h), 0, 0);
+    return { canvas, origW: w / res, origH: h / res, resX: res, resY: res };
+  }
+
+  async function loadCostumeImage(costume) {
+    const fmt = String(costume.dataFormat || (costume.asset && costume.asset.dataFormat) || 'png').toLowerCase();
+    const data = assetDataOf(costume);
+    if (data) {
+      if (fmt === 'svg') return loadSvg(data);
+      return loadBitmap(data, MIME[fmt] || 'image/png', costume.bitmapResolution || 1);
+    }
+
+    const skin = skinOf(costume);
+    if (skin) {
+      const text = fmt === 'svg' ? skinSvgText(skin) : null;
+      if (text) return loadSvg(new TextEncoder().encode(text));
+      try {
+        if (fmt === 'svg') console.warn('[9-Patch] SVG source not found on skin; falling back to a low-resolution texture.');
+        return skinBitmapSource(skin, costume);
+      } catch (e) {
+        console.warn('[9-Patch] skin readback failed:', e);
+      }
+    }
+
+    const storage = runtime.storage;
+    const id = costume.assetId || costume.md5;
+    if (storage && storage.load && id) {
+      const type = fmt === 'svg' ? storage.AssetType.ImageVector : storage.AssetType.ImageBitmap;
+      const a = await storage.load(type, id, fmt);
+      if (a && a.data) {
+        if (fmt === 'svg') return loadSvg(a.data);
+        return loadBitmap(a.data, MIME[fmt] || 'image/png', costume.bitmapResolution || 1);
+      }
+    }
+    throw new Error('Costume has no image data (no asset, no usable skin, storage unavailable).');
+  }
+
+  const sourceCache = new Map();
+  const SOURCE_CACHE_MAX = 24;
+  function getSource(costume) {
+    const key = costumeKey(costume);
+    const hit = sourceCache.get(key);
+    if (hit) {
+      sourceCache.delete(key);
+      sourceCache.set(key, hit);
+      return hit.promise;
+    }
+    const rec = {
+      promise: loadCostumeImage(costume).then((src) => {
+        src.key = key;
+        return src;
+      })
+    };
+    rec.promise.catch(() => {
+      if (sourceCache.get(key) === rec) sourceCache.delete(key);
+    });
+    sourceCache.set(key, rec);
+    if (sourceCache.size > SOURCE_CACHE_MAX) sourceCache.delete(sourceCache.keys().next().value);
+    return rec.promise;
+  }
+
+  const displayRes = (target) => {
+    let ppu = 2;
+    try {
+      const cv = runtime.renderer && runtime.renderer.canvas;
+      const sw = runtime.stageWidth || 480;
+      if (cv && cv.width > 0) {
+        ppu = cv.width / sw;
+      } else if (cv && cv.getBoundingClientRect) {
+        const rect = cv.getBoundingClientRect().width;
+        if (rect > 0) ppu = (rect * (window.devicePixelRatio || 1)) / sw;
+      }
+    } catch (e) {}
+    const sz = target && Number.isFinite(target.size) ? target.size : 100;
+    return clamp(Math.ceil(ppu * (Math.max(1, sz) / 100) * 4) / 4, 0.5, 8);
+  };
+
+  function drawPattern(ctx, cache, imgKey, img, sx, sy, sw, sh, dx, dy, dw, dh, tileX, tileY, kx, ky) {
+    const ck = `${imgKey}|${sx},${sy},${sw},${sh}`;
+    let tile = cache.get(ck);
+    if (!tile) {
+      tile = makeCanvas(sw, sh);
+      tile.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, tile.width, tile.height);
+      cache.set(ck, tile);
+      if (cache.size > 12) cache.delete(cache.keys().next().value);
+    }
+    const pat = ctx.createPattern(tile, tileX && tileY ? 'repeat' : tileX ? 'repeat-x' : 'repeat-y');
+    if (!pat || !pat.setTransform) throw new Error('no pattern');
+    const fx = tileX ? Math.max(1 / sw, kx) : dw / sw;
+    const fy = tileY ? Math.max(1 / sh, ky) : dh / sh;
+    pat.setTransform(new DOMMatrix([fx, 0, 0, fy, 0, 0]));
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.fillStyle = pat;
+    ctx.fillRect(0, 0, dw, dh);
+    ctx.restore();
+  }
+
+  const FRAME_BUDGET = 5;
+  const hatCache = new WeakMap();
 
   function fitBorders(a, b, total) {
     a = clamp(Math.round(a), 0, total);
@@ -251,11 +415,15 @@
   class NinePatch {
     constructor() {
       this.states = new Map();
+      this._rr = 0;
 
       this._onAfterExecute = this._onAfterExecute.bind(this);
       runtime.on('AFTER_EXECUTE', this._onAfterExecute);
       runtime.on('PROJECT_STOP_ALL', () => this._disposeAll());
-      runtime.on('PROJECT_LOADED', () => this._disposeAll());
+      runtime.on('PROJECT_LOADED', () => {
+        this._disposeAll();
+        sourceCache.clear();
+      });
       runtime.on('targetWasRemoved', (t) => this._disposeTarget(t));
       runtime.on('targetWasCreated', (clone, original) => this._onTargetCreated(clone, original));
     }
@@ -435,6 +603,11 @@
       let st = this.states.get(target.id);
       if (!st) {
         st = {
+          target,
+          dirty: false,
+          seenCostume: null,
+          seenAsset: null,
+          tileCache: null,
           active: false,
           dead: false,
           width: null,
@@ -523,7 +696,7 @@
 
       st.loadingKey = key;
       st.failedKey = null;
-      const p = loadCostumeImage(costume)
+      const p = getSource(costume)
         .then((src) => {
           if (st.dead || !st.active) return false;
           if (st.loadingKey !== key) return this._ensureSource(target, st);
@@ -538,7 +711,7 @@
           }
           if (st.width == null) st.width = src.origW;
           if (st.height == null) st.height = src.origH;
-          this._commit(target, st);
+          st.dirty = true;
           return true;
         })
         .catch((err) => {
@@ -554,11 +727,11 @@
       return p;
     }
 
-    _geometry(st) {
+    _geometry(st, target) {
       const src = st.source;
       const W = clampSize(st.width == null ? src.origW : st.width);
       const H = clampSize(st.height == null ? src.origH : st.height);
-      let res = Math.min(src.resX, MAX_PX / W, MAX_PX / H);
+      let res = Math.min(src.resX, MAX_PX / W, MAX_PX / H, displayRes(target));
       if (!(res > 0)) res = 1;
       const cw = Math.max(1, Math.round(W * res));
       const ch = Math.max(1, Math.round(H * res));
@@ -632,7 +805,7 @@
         cv.width = g.cw;
         cv.height = g.ch;
       }
-      const ctx = cv.getContext('2d');
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
       ctx.clearRect(0, 0, cv.width, cv.height);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
@@ -660,7 +833,12 @@
           }
 
           if (tileX || tileY) {
-            drawTiled(ctx, src.canvas, sx, sy, sw, sh, dx, dy, dw, dh, tileX, tileY, g.kx, g.ky);
+            try {
+              if (!st.tileCache) st.tileCache = new Map();
+              drawPattern(ctx, st.tileCache, src.key, src.canvas, sx, sy, sw, sh, dx, dy, dw, dh, tileX, tileY, g.kx, g.ky);
+            } catch (e) {
+              drawTiled(ctx, src.canvas, sx, sy, sw, sh, dx, dy, dw, dh, tileX, tileY, g.kx, g.ky);
+            }
           } else {
             ctx.drawImage(src.canvas, sx, sy, sw, sh, dx, dy, dw, dh);
           }
@@ -668,25 +846,55 @@
       }
     }
 
+    // false quando outra extensão (ex.: texto por cima) está com a skin do ator:
+    // assim as duas não ficam trocando a skin a cada frame (isso invalida cache e hitbox).
+    _canSetSkin(target, st) {
+      const r = runtime.renderer;
+      const dr = r && r._allDrawables ? r._allDrawables[target.drawableID] : null;
+      const cur = dr && dr.skin ? dr.skin.id : null;
+      if (cur === null || cur === st.skinId) return true;
+      const cs = target.getCostumes();
+      for (let i = 0; i < cs.length; i++) if (cs[i].skinId === cur) return true;
+      return false;
+    }
+
+    // Pede para pintar no fim do frame: vários set size/borders/fill no mesmo frame viram 1 pintura.
+    _requestCommit(target, st) {
+      if (!st.active || st.dead || target.isStage) return;
+      st.dirty = true;
+    }
+
     _commit(target, st) {
       if (!st.active || !st.source || st.dead || target.isStage) return;
       const r = runtime.renderer;
-      if (!r || target.drawableID == null) return;
+      if (!r || target.drawableID == null) {
+        if (!st.warnedNoRenderer) {
+          st.warnedNoRenderer = true;
+          console.warn('[9-Patch] no renderer/drawable for', target.getName && target.getName(), !!r, target.drawableID);
+        }
+        return;
+      }
       try {
-        const g = this._geometry(st);
+        const g = this._geometry(st, target);
         if (g.sig !== st.sig || st.skinId == null) {
           this._paint(st, g);
           const cx = g.cw / g.res / 2;
           const cy = g.ch / g.res / 2;
+          st.res = g.res;
           if (st.skinId == null) {
             st.skinId = r.createBitmapSkin(st.canvas, g.res, [cx, cy]);
-          } else {
+            st.skinStale = false;
+          } else if (this._canSetSkin(target, st)) {
             r.updateBitmapSkin(st.skinId, st.canvas, g.res, [cx, cy]);
+            st.skinStale = false;
+          } else {
+          
+            st.skinStale = true;
           }
           st.sig = g.sig;
           runtime.requestRedraw();
         }
-        r.updateDrawableSkinId(target.drawableID, st.skinId);
+        if (this._canSetSkin(target, st)) r.updateDrawableSkinId(target.drawableID, st.skinId);
 
         if (st.lastW !== g.W || st.lastH !== g.H) {
           const first = st.lastW === null;
@@ -699,8 +907,25 @@
       }
     }
 
+    _hasResizedHat(target) {
+      const b = target.blocks;
+      if (!b || typeof b.getScripts !== 'function') return true;
+      const now = performance.now();
+      let c = hatCache.get(b);
+      if (c && now - c.at < 500) return c.has;
+      let has = false;
+      const scripts = b.getScripts();
+      for (let i = 0; i < scripts.length && !has; i++) {
+        const blk = b.getBlock(scripts[i]);
+        if (blk && blk.opcode === `${EXT_ID}_whenResized`) has = true;
+      }
+      hatCache.set(b, { at: now, has });
+      return has;
+    }
+
     _fireResized(target) {
       try {
+        if (!this._hasResizedHat(target)) return;
         runtime.startHats(`${EXT_ID}_whenResized`, null, target);
       } catch (e) {
         console.warn('[9-Patch]', e);
@@ -715,6 +940,7 @@
         const ok = await this._ensureSource(target, st);
         if (st.dead) return;
         if (!ok && st.active && !st.source) {
+          console.warn('[9-Patch] could not activate; costume image failed to load for', target.getName && target.getName());
           st.active = false;
           this._releaseSkin(target, st);
         }
@@ -764,6 +990,12 @@
       st.failedKey = null;
       st.canvas = null;
       st.sig = '';
+      st.dirty = false;
+      st.skinStale = false;
+      st.res = 0;
+      st.tileCache = null;
+      st.seenCostume = null;
+      st.seenAsset = null;
       st.lastW = null;
       st.lastH = null;
     }
@@ -813,9 +1045,18 @@
     _onAfterExecute() {
       if (this.states.size === 0) return;
       const now = performance.now();
-      for (const [id, st] of Array.from(this.states)) {
-        const target = runtime.getTargetById(id);
-        if (!target) {
+      const live = new Set(runtime.targets);
+      const list = Array.from(this.states);
+      const n = list.length;
+      if (this._rr >= n) this._rr = 0;
+      const renderer = runtime.renderer;
+      let firstLate = -1;
+      for (let k = 0; k < n; k++) {
+        const i = (k + this._rr) % n;
+        const id = list[i][0];
+        const st = list[i][1];
+        const target = st.target;
+        if (!target || !live.has(target)) {
           this._disposeState(id, st, null);
           continue;
         }
@@ -823,21 +1064,47 @@
         try {
           this._tickTween(target, st, now);
 
+          if (now - (st.resCheckAt || 0) > 300) {
+            st.resCheckAt = now;
+            const d = displayRes(target);
+            if (d !== st.lastDisp) {
+              st.lastDisp = d;
+              st.dirty = true;
+            }
+          }
+
           const costume = this._pickCostume(target, st);
-          if (costume) {
+          if (costume && (!st.source || costume !== st.seenCostume || costume.assetId !== st.seenAsset)) {
+            st.seenCostume = costume;
+            st.seenAsset = costume.assetId;
             const key = costumeKey(costume);
             if ((!st.source || st.source.key !== key) && st.loadingKey !== key && st.failedKey !== key) {
               this._ensureSource(target, st);
             }
           }
 
-          if (st.skinId != null && runtime.renderer && target.drawableID != null) {
-            runtime.renderer.updateDrawableSkinId(target.drawableID, st.skinId);
+          if (st.dirty) {
+            if (performance.now() - now > FRAME_BUDGET) {
+              
+              if (firstLate < 0) firstLate = i;
+            } else {
+              st.dirty = false;
+              this._commit(target, st);
+            }
+          }
+
+          if (st.skinId != null && renderer && target.drawableID != null && this._canSetSkin(target, st)) {
+            if (st.skinStale && st.canvas && st.res > 0) {
+              renderer.updateBitmapSkin(st.skinId, st.canvas, st.res, [st.canvas.width / st.res / 2, st.canvas.height / st.res / 2]);
+              st.skinStale = false;
+            }
+            renderer.updateDrawableSkinId(target.drawableID, st.skinId);
           }
         } catch (e) {
           console.warn('[9-Patch]', e);
         }
       }
+      this._rr = firstLate >= 0 ? firstLate : 0;
     }
 
     _tickTween(target, st, now) {
@@ -852,7 +1119,7 @@
         st.width = tw.toW;
         st.height = tw.toH;
       }
-      this._commit(target, st);
+      st.dirty = true;
       if (t >= 1) this._resolveTween(st);
     }
 
@@ -888,7 +1155,7 @@
       if (!st) return;
       st.width = clampSize(num(args.W, this._curW(t, st)));
       st.height = clampSize(num(args.H, this._curH(t, st)));
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     setWidth(args, util) {
@@ -896,7 +1163,7 @@
       const st = this._stateFor(t);
       if (!st) return;
       st.width = clampSize(num(args.W, this._curW(t, st)));
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     setHeight(args, util) {
@@ -904,7 +1171,7 @@
       const st = this._stateFor(t);
       if (!st) return;
       st.height = clampSize(num(args.H, this._curH(t, st)));
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     _startTween(t, st, args) {
@@ -917,7 +1184,7 @@
       if (!st.active || dur <= 0) {
         st.width = toW;
         st.height = toH;
-        this._commit(t, st);
+        this._requestCommit(t, st);
         return null;
       }
       const ease = EASE_KEYS[String(args.EASE).trim().toLowerCase().replace(/[\s_-]/g, '')] || 'cubicInOut';
@@ -958,7 +1225,7 @@
       b.r = clamp(num(args.R, b.r), 0, 100000);
       b.t = clamp(num(args.T, b.t), 0, 100000);
       b.b = clamp(num(args.B, b.b), 0, 100000);
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     setFill(args, util) {
@@ -969,7 +1236,7 @@
       const mode = String(args.MODE).trim().toLowerCase() === 'tile' ? 'tile' : 'stretch';
       if (part === 'edges' || part === 'all') st.edgeMode = mode;
       if (part === 'center' || part === 'all') st.centerMode = mode;
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     setInterfaceSize(args, util) {
@@ -977,7 +1244,7 @@
       const st = this._stateFor(t);
       if (!st) return;
       st.uiScale = clamp(num(args.N, 100), 1, 2000) / 100;
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     changeInterfaceSize(args, util) {
@@ -985,7 +1252,7 @@
       const st = this._stateFor(t);
       if (!st) return;
       st.uiScale = clamp(st.uiScale * 100 + num(args.N, 0), 1, 2000) / 100;
-      this._commit(t, st);
+      this._requestCommit(t, st);
     }
 
     getInterfaceSize(args, util) {

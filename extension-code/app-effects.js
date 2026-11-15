@@ -248,6 +248,38 @@
     );
   };
 
+  const spriteCache = new Map();
+
+  const getSprite = (glyph, size) => {
+    const px = Math.max(8, Math.round(size / 4) * 4);
+    const key = glyph + '|' + px;
+    let s = spriteCache.get(key);
+    if (s) return s;
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d');
+    g.font = `${px}px serif`;
+    const w = Math.ceil(g.measureText(glyph).width) + 8;
+    const h = Math.ceil(px * 1.5);
+    c.width = w;
+    c.height = h;
+    g.font = `${px}px serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(glyph, w / 2, h / 2);
+    s = { img: c, w, h };
+    if (spriteCache.size > 300) spriteCache.clear();
+    spriteCache.set(key, s);
+    return s;
+  };
+
+  const drawSprite = (ctx, glyph, size, x, y, rot) => {
+    const s = getSprite(glyph, size);
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    ctx.setTransform(cos, sin, -sin, cos, x, y);
+    ctx.drawImage(s.img, -s.w / 2, -s.h / 2);
+  };
+
   const emojiBurst = (glyphs, count, xPct, yPct) => {
     const L = makeCanvas(100003);
     const ox = (clamp(xPct, 0, 100) / 100) * L.w;
@@ -271,9 +303,8 @@
     runLoop(
       L,
       (ctx, w, h) => {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, w, h);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
         let alive = 0;
         parts.forEach((p) => {
           p.vy += 0.18;
@@ -284,15 +315,12 @@
           p.life -= p.decay;
           if (p.life > 0) {
             alive++;
-            ctx.save();
             ctx.globalAlpha = Math.min(1, p.life * 1.5);
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.rot);
-            ctx.font = `${p.size}px serif`;
-            ctx.fillText(p.glyph, 0, 0);
-            ctx.restore();
+            drawSprite(ctx, p.glyph, p.size, p.x, p.y, p.rot);
           }
         });
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1;
         return alive === 0;
       },
       6000
@@ -311,12 +339,8 @@
 
   const drawFalling = (ctx, p, cfg) => {
     if (cfg.glyph) {
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.font = `${p.size}px serif`;
-      ctx.fillText(cfg.glyph, 0, 0);
-      ctx.restore();
+      drawSprite(ctx, cfg.glyph, p.size, p.x, p.y, p.rot);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
     } else if (cfg.shape === 'line') {
       ctx.strokeStyle = cfg.color;
       ctx.lineWidth = 1.2;
@@ -381,8 +405,6 @@
           }
         }
         ctx.clearRect(0, 0, w, h);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
         for (let i = parts.length - 1; i >= 0; i--) {
           const p = parts[i];
           p.phase += 0.03;
